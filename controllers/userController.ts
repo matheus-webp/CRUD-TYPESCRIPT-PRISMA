@@ -15,6 +15,17 @@ class User {
     return result;
   }
 
+  async findByValue(value: string) {
+    const result = await prisma.user.findFirst({
+      where: { OR: [{ email: value }, { username: value }] },
+    });
+    return result;
+  }
+
+  async findByEmail(email: string) {
+    return await prisma.user.findUnique({ where: { email } });
+  }
+
   async create(
     name: string,
     email: string,
@@ -25,7 +36,7 @@ class User {
     if (userAlreadyExists) {
       return {
         statusCode: 400,
-        err: "An username with these credentials already exists",
+        err: "An user with these credentials already exists",
       };
     }
     await prisma.user.create({
@@ -34,23 +45,17 @@ class User {
         email,
         username,
         password,
-
-        posts: {
-          create: {
-            title: "Hello World",
-          },
-        },
       },
     });
   }
 
-  async remove(password: string, username?: string, email?: string) {
-    const user = await this.findByUsernameOrEmail(username, email);
+  async remove(password: string, value: string) {
+    const user = await this.findByValue(value);
     if (!user) {
-      return { statusCode: 400, err: "User not found" };
+      return { statusCode: 400, err: "Invalid credentials" };
     }
     if (!(await hashController.comparePassword(password, user.password))) {
-      return { statusCode: 401, err: "Wrong password." };
+      return { statusCode: 400, err: "Invalid credentials." };
     }
     await prisma.post.deleteMany({ where: { authorId: user.id } });
     await prisma.user.delete({ where: { id: user.id } });
@@ -74,6 +79,21 @@ class User {
       data: { username: newUsername },
     });
     return { statusCode: 200, message: "Username changed!" };
+  }
+
+  async changePassword(email: string, password: string) {
+    if (!password) {
+      return { statusCode: 400, err: "Invalid credentials" };
+    }
+    const user = await this.findByEmail(email);
+    if (!user) {
+      return { statusCode: 400, err: "User not found" };
+    }
+    const hashedPassword = await hashController.hashPassword(password);
+    await prisma.user.update({
+      where: { email: user.email },
+      data: { password: hashedPassword },
+    });
   }
 }
 
